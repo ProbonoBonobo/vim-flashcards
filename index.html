@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en" onkeypress="Controller(event);">
+<head>
+    <script src="../shared/js/jquery.js"></script>
+    <meta charset="UTF-8">
+    <title>Vim Flashcards!</title>
+    <script>
+        var userInput, question, asked, correct, tries, difficultyLevel;
+        var DOM = {};
+        var ctrlPressed = false;
+        var escPressed = false;
+
+        var vimQuestions = {
+            "easy" :     ["Yank current line.",
+                          "Move forward one word.",
+                          "Move back one word.",
+                          "Delete this word.",
+                          "Undo.",
+                          "Redo.",
+                          "Move cursor to end of line.",
+                          "Move cursor down.",
+                          "Move cursor up.",
+                          "You are in command-line mode. Insert the following text after the cursor: function () {",
+                          "Save and quit.",
+                          "Quit without saving changes."
+            ],
+            "moderate" : ["Yank this and the next line.",
+                          "Go to first non-whitespace character on this line.",
+                          "Move to previous \"{...}\" section.",
+                          "Go to first non-whitespace character on next line.",
+                          "Go to first non-whitespace character on previous line.",
+                          "Copy the current line to register 1.",
+                          "Set mark 'a' at the current position.",
+                          "Show me my marks.",
+                          "Show me all my numbered and named registers.",
+                          "Show me the current contents of register #3."],
+            "hard":      ["Go to the next occurrence of \"<Virtualhost \"",
+                          "Copy the next three lines to register #2.",
+                          "Copy the next three words to register #1.",
+                          "Go to the next line that contains both 'localhost' and '127.0.0.1' (greedy match).",
+                          "Go to the line and position marked 'a'.",
+                          "Insert the contents of register x before the cursor.",
+                          "Insert the contents of register x after the cursor.",
+                          "Go to the third next occurrence of \"'\"",
+                          "Insert 80 commas after the cursor."]
+        };
+
+
+        function onload() {
+            question = document.getElementById('question');
+            userInput = document.getElementById('userInput');
+            DOM['count'] = document.getElementById('count');
+            DOM['count' ].innerHTML = 0;
+            DOM['score'] = document.getElementById('score');
+	        DOM['score'].innerHTML = 0;
+	        DOM['difficulty'] = document.getElementById('difficulty');
+	        asked = 0;
+            correct = 0;
+            tries = 0;
+            difficultyLevel = "easy";
+            return askQuestion();
+        }
+
+        function lookupAnswerToCurrentQuestion () {
+            var questionText = question.innerHTML;
+            var hashtable = { "Yank 5 lines." : "yy5",
+                              "Yank current line." : "y",
+                              "Undo." : "u",
+                              "Redo." : ":red",
+                              "Move forward one word." : "w",
+                              "Save and quit." : ":wq",
+                              "Quit without saving changes.": ":q!",
+                              "Move back one word." : "b",
+                              "Move cursor down." : "j",
+                              "You are in command-line mode. Insert the following text after the cursor: function () {" : "ifunction () {",
+                              "Move cursor up." : "k",
+                              "Move cursor to end of line." : "$",
+                              "Delete this word." : "dw",
+                              "Yank this and the next line." : "yy2",
+                              "Go to first non-whitespace character on this line." : "^",
+                              "Move to previous \"{...}\" section." : "[",
+                              "Go to first non-whitespace character on next line." : "+",
+                              "Go to first non-whitespace character on previous line." : "-",
+                              "Set mark 'a' at the current position." : "ma",
+                              "Show me my marks." : ":marks",
+                              "Show me all my numbered and named registers." : ":reg",
+                              "Show me the current contents of register #3." : ":reg[3]",
+                              "Copy the current line to register 1." : "[\"1]y",
+                              "Copy the next three lines to register #2." : "[\"2]yy3",
+                              "Copy the next three words to register #1." : "[\"1]y3w",
+                              "Find the next occurrence of \"<Virtualhost \"": "<Virtualhost ",
+                              "Go to the next line that contains both 'localhost' and '127.0.0.1' (greedy match).": "/.*localhost\\&.*127.0.0.1",
+                              "Go to the line and position marked 'a'.": "`a",
+                              "Insert the contents of register x before the cursor.": "[\"x]p",
+                              "Insert the contents of register x after the cursor.": "[\"x]P",
+                              "Go to the third next occurrence of \"'\"": "/'/3",
+                              "Insert 80 commas after the cursor. (Use 'ctrl+' and 'esc', in lieu of control characters)": "\<Ctrl>+o80,\<Esc>"
+            
+	        };
+            return hashtable[questionText];
+        }
+
+
+
+        function canProceed() {
+            // a buncha static methods for mutating the global variables in a Java-approved way
+            function updateScore() {
+                DOM['score' ].innerHTML = parseInt(DOM['score' ].innerHTML) + 1;
+                correct+=1;
+            }
+            function resetAttempts(){
+                tries = 0;
+            }
+            function incrementAttempts() {
+                tries+=1;
+            }
+            function clearInput() {
+                userInput.value = "";
+            }
+            if (lookupAnswerToCurrentQuestion() == userInput.value) {
+                console.log("Correct!");
+                updateScore();
+                resetAttempts();
+                clearInput();
+                return true;
+            } else if (tries < 2) {
+                console.log("Sorry, try again.");
+                incrementAttempts();
+                return false;
+            } else {
+                console.log("The correct answer is " + lookupAnswerToCurrentQuestion());
+                clearInput();
+                resetAttempts();
+                return true;
+            }
+        }
+
+        function determineAppropriateDifficulty(currentDifficulty) {
+            var percentCorrect = asked/correct;
+            var difficulty2Digit = { "easy" : 1,
+                                     "moderate" : 2,
+                                     "hard" : 3};
+            var digit2Difficulty = { 1: "easy",
+                                     2: "moderate",
+                                     3: "hard"};
+	    function updateDifficulty(newDifficulty) {
+		    difficultyLevel = newDifficulty;
+		    DOM['difficulty'].innerHTML = difficultyLevel;
+	    }
+            function makeTheQuestions(modifier) {
+                var currentDifficultyAsANumber, newDifficulty;
+                switch (modifier) {
+                    case "harder":
+                        if (currentDifficulty == "hard") {
+                            return "hard";
+                        } else {
+                            currentDifficultyAsANumber = difficulty2Digit[currentDifficulty];
+                            newDifficulty = digit2Difficulty[currentDifficultyAsANumber + 1];
+                            return newDifficulty;
+                        }
+                        break;
+                    case "easier":
+                        if (currentDifficulty == "easy") {
+                            return "easy";
+                        } else {
+                            currentDifficultyAsANumber = difficulty2Digit[currentDifficulty];
+                            newDifficulty = digit2Difficulty[currentDifficultyAsANumber - 1];
+                            return newDifficulty;
+                    }
+                }
+            }
+            if (percentCorrect >= 0.66) {
+                currentDifficulty =  makeTheQuestions("harder");
+            } else if (percentCorrect < 0.5) {
+                currentDifficulty =  makeTheQuestions("easier");
+            }
+            updateDifficulty(currentDifficulty);
+            return currentDifficulty;
+        }
+
+        function updateCount() {
+            asked += 1;
+            DOM['count' ].innerHTML = parseInt(DOM['count' ].innerHTML) + 1;
+        }
+
+
+
+        function askQuestion() {
+            var currentDifficulty = determineAppropriateDifficulty(difficultyLevel);
+            function randomChoice(difficulty) {
+                return vimQuestions[difficulty][Math.floor(Math.random() * vimQuestions[difficulty].length)];
+            }
+
+            function selectNewQuestion() {
+                return randomChoice(currentDifficulty);
+            }
+
+            function updateDifficulty(newDifficulty) {
+		        DOM['difficulty'].innerHTML = newDifficulty;
+	        }
+	        updateDifficulty(currentDifficulty);
+            question.innerHTML = selectNewQuestion();
+            updateCount();
+
+        }
+        function submit() {
+            if (canProceed()) {
+                askQuestion();
+            }
+        }
+
+        function cacheIt(event) {
+            ctrlPressed = event.ctrlKey || event.keyCode === 17;
+            escPressed = event.keyCode === 27;
+            if (ctrlPressed == true) {
+                userInput.value += "<Ctrl>";
+                ctrlPressed = false;
+                return;
+            } else if (escPressed === true) {
+                userInput.value +=
+                        "<Esc>";
+                escPressed =
+                        false;
+                return;
+            }
+        }
+
+        function Controller (event){
+            function isEnter(charCode) {
+                if (charCode === 13) {
+                    return true;
+                }
+            }
+            function isCtrl(charCode) {
+                if (charCode === 17) {
+                    return true;
+                }
+            }
+            var chCode = ('charCode' in event) ? event.charCode : event.keyCode;
+            switch (chCode) {
+                case 13: // Enter
+                    submit();
+                    break;
+                case 17:
+                    console.log("Ctrl!");
+
+                    break;
+            }
+
+        }
+    </script>
+</head>
+<body onload="onload();">
+<small>Question #<b id="count" content="0"></b></small>
+<small>Score: <b id="score" content="0"></b></small>
+<h1 id="question"></h1>
+<input type="text" name="enter" class="enter" value="" id="userInput" onkeydown="cacheIt(event);" autofocus />
+<input type="button" value="click" onclick="submit();"/>
+
+<br>
+<br>
+<small>Current difficulty: <b id="difficulty" content="easy"></b></small>
+
+<div style="position: absolute; bottom: 0px; margin-bottom: 15px;"><i>Errors? Suggestions? Tweet me <a href="twitter.com/kevinzeidler">@kevinzeidler</a> or <a href="https://github.com/ProbonoBonobo/vim-flashcards.git">fork this project on Github!</a></i></div>
+
+
+<script>
+
+</script>
+</body>
+</html>
